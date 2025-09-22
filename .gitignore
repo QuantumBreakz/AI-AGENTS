@@ -1,0 +1,90 @@
+# --- General OS/Editor junk ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Environment files ---
+.env
+.env.*
+!.env.example
+.python-version
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+.envrc
+
+# Packaging / build
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Testing / coverage
+.pytest_cache/
+.coverage*
+htmlcov/
+.tox/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Logs
+*.log
+
+# Databases / artifacts
+*.db
+*.sqlite3
+
+# Pickle and embeddings storage (per project preference)
+*.pkl
+Embeddings-Storage-Faiss/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+.next-cache/
+.out/
+out/
+.turbo/
+.vercel/
+
+# Node logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+coverage/
+
+# --- Archives & binaries ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+
+# --- Docker ---
+.docker/
+**/.env.docker
+
+# --- Project-specific ---
+Agents.zip
+api_keys.xlsx
+agents documentation.docx
