@@ -1,12 +1,12 @@
-import os
 from typing import Mapping, Any, List
 
 from app.services.crm.hubspot import HubSpotClient
 from app.services.crm.pipedrive import PipedriveClient
 from app.services.crm.salesforce import SalesforceClient
 from app.services.crm.zoho import ZohoClient
+from app.core.config import settings
 
-ENABLED = set(filter(None, (os.getenv("ENABLED_CRMS") or "").lower().split(",")))
+ENABLED = set(filter(None, (settings.ENABLED_CRMS or "").lower().split(",")))
 
 class CRMManager:
 	def __init__(self) -> None:

@@ -47,7 +47,7 @@ class ApplyFilters(BaseModel):
 	company_size: Optional[str] = None
 
 @router.post("/apply")
-async def auto_apply(body: ApplyFilters, provider: str = Form("linkedin"), db: AsyncSession = Depends(get_db)):
+async def auto_apply(body: ApplyFilters, provider: str = "linkedin", db: AsyncSession = Depends(get_db)):
 	profile = (await db.get(ApplicantProfile, 1)) or ApplicantProfile(id=1)
 	filters = {"job_title": body.job_title or profile.job_title_pref, "location": body.location or profile.location_pref, "salary_min": body.salary_min or profile.salary_min, "company_size": body.company_size or profile.company_size_pref}
 	if provider == "linkedin":

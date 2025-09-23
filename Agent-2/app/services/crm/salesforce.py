@@ -1,14 +1,14 @@
-import os
 from typing import Mapping, Any
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
+from app.core.config import settings
 
-CLIENT_ID = os.getenv("SALESFORCE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("SALESFORCE_CLIENT_SECRET")
-USERNAME = os.getenv("SALESFORCE_USERNAME")
-PASSWORD = os.getenv("SALESFORCE_PASSWORD")
-TOKEN = os.getenv("SALESFORCE_TOKEN")
+CLIENT_ID = settings.SALESFORCE_CLIENT_ID
+CLIENT_SECRET = settings.SALESFORCE_CLIENT_SECRET
+USERNAME = settings.SALESFORCE_USERNAME
+PASSWORD = settings.SALESFORCE_PASSWORD
+TOKEN = settings.SALESFORCE_TOKEN
 
 API_VERSION = "v59.0"
 

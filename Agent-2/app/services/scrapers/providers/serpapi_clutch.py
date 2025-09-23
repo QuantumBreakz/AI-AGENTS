@@ -1,10 +1,13 @@
-import os
 from typing import Mapping, Any, AsyncIterator
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
+from app.core.config import settings
+from httpx import HTTPStatusError
+import logging
+logger = logging.getLogger(__name__)
 
-API_KEY = os.getenv("SERPAPI_API_KEY")
+API_KEY = settings.SERPAPI_API_KEY
 BASE_URL = "https://serpapi.com/search.json"
 
 class SerpapiClutchScraper:
@@ -20,9 +23,18 @@ class SerpapiClutchScraper:
 			"api_key": API_KEY,
 		}
 		async with httpx.AsyncClient(timeout=30) as client:
-			resp = await client.get(BASE_URL, params=params)
-			resp.raise_for_status()
-			data = resp.json()
+			try:
+				resp = await client.get(BASE_URL, params=params)
+				resp.raise_for_status()
+				data = resp.json()
+			except HTTPStatusError as e:
+				status = e.response.status_code if e.response else None
+				url = str(e.request.url) if e.request else None
+				logger.debug("serpapi_clutch_search_failed status=%s url=%s", status, url)
+				return
+			except Exception:
+				logger.debug("serpapi_clutch_search_failed_unexpected", exc_info=True)
+				return
 			for item in data.get("organic_results", [])[:20]:
 				company = item.get("title")
 				yield {

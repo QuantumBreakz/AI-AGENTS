@@ -70,8 +70,9 @@ async def one_click(body: OneClickRequest, db: AsyncSession = Depends(get_db)):
 		text = await suggest("reply", {"role": body.role, "offer": body.offer, "step": i + 1})
 		texts.append(text)
 	from datetime import timedelta
+	await db.flush()
 	for i, t in enumerate(texts):
-		campaign.emails.append(CampaignEmail(sequence_order=i + 1, subject_template=f"{body.offer} — Step {i+1}", body_template=t, send_delay_hours=24 if i else 0, is_follow_up=i>0))
+		db.add(CampaignEmail(campaign_id=campaign.id, sequence_order=i + 1, subject_template=f"{body.offer} — Step {i+1}", body_template=t, send_delay_hours=24 if i else 0, is_follow_up=i>0))
 	await db.commit()
 
 	# 5) Enroll leads

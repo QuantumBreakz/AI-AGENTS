@@ -27,9 +27,11 @@ async def list_campaigns(db: AsyncSession = Depends(get_db)):
 async def create_campaign(payload: CampaignCreate, db: AsyncSession = Depends(get_db)):
 	campaign = Campaign(name=payload.name, offer=payload.offer, status=payload.status)
 	if payload.emails:
+		await db.flush()
 		for i, e in enumerate(payload.emails):
-			campaign.emails.append(
+			db.add(
 				CampaignEmail(
+					campaign_id=campaign.id,
 					sequence_order=e.sequence_order or i + 1,
 					subject_template=e.subject_template,
 					body_template=e.body_template,
@@ -54,10 +56,13 @@ async def update_campaign(campaign_id: int, payload: CampaignUpdate, db: AsyncSe
 	for k, v in payload.model_dump(exclude_unset=True, exclude={"emails"}).items():
 		setattr(campaign, k, v)
 	if payload.emails is not None:
-		campaign.emails.clear()
+		from sqlalchemy import delete
+		await db.execute(delete(CampaignEmail).where(CampaignEmail.campaign_id == campaign.id))
+		await db.flush()
 		for i, e in enumerate(payload.emails):
-			campaign.emails.append(
+			db.add(
 				CampaignEmail(
+					campaign_id=campaign.id,
 					sequence_order=e.sequence_order or i + 1,
 					subject_template=e.subject_template,
 					body_template=e.body_template,
@@ -133,7 +138,8 @@ async def generate_sequence(campaign_id: int, body: GenerateSequenceRequest, db:
 	if not campaign:
 		return {"ok": False}
 	from datetime import timedelta
+	await db.flush()
 	for i, t in enumerate(texts):
-		campaign.emails.append(CampaignEmail(sequence_order=i + 1, subject_template=f"{body.offer} — Step {i+1}", body_template=t, send_delay_hours=24 if i else 0, is_follow_up=i>0))
+		db.add(CampaignEmail(campaign_id=campaign.id, sequence_order=i + 1, subject_template=f"{body.offer} — Step {i+1}", body_template=t, send_delay_hours=24 if i else 0, is_follow_up=i>0))
 	await db.commit()
 	return {"ok": True, "steps": len(texts)}

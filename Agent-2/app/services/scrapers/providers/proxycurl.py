@@ -1,10 +1,13 @@
-import os
 from typing import Mapping, Any, AsyncIterator
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
+from app.core.config import settings
+from httpx import HTTPStatusError
+import logging
+logger = logging.getLogger(__name__)
 
-API_KEY = os.getenv("PROXYCURL_API_KEY")
+API_KEY = settings.PROXYCURL_API_KEY
 BASE_URL = "https://nubela.co/proxycurl/api"
 
 class ProxycurlLinkedInScraper:
@@ -22,9 +25,18 @@ class ProxycurlLinkedInScraper:
 			"industry": query.get("industry"),
 		}
 		async with httpx.AsyncClient(timeout=30) as client:
-			resp = await client.get(f"{BASE_URL}/search/person", headers=headers, params={k: v for k, v in params.items() if v})
-			resp.raise_for_status()
-			data = resp.json()
+			try:
+				resp = await client.get(f"{BASE_URL}/search/person", headers=headers, params={k: v for k, v in params.items() if v})
+				resp.raise_for_status()
+				data = resp.json()
+			except HTTPStatusError as e:
+				status = e.response.status_code if e.response else None
+				url = str(e.request.url) if e.request else None
+				logger.debug("proxycurl_search_failed status=%s url=%s", status, url)
+				return
+			except Exception:
+				logger.debug("proxycurl_search_failed_unexpected", exc_info=True)
+				return
 			for p in data.get("results", [])[:50]:
 				yield {
 					"name": p.get("full_name"),

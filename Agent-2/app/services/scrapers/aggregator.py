@@ -4,6 +4,7 @@ from app.services.scrapers.providers.apollo import ApolloScraper
 from app.services.scrapers.providers.crunchbase import CrunchbaseScraper
 from app.services.scrapers.providers.proxycurl import ProxycurlLinkedInScraper
 from app.services.scrapers.providers.serpapi_clutch import SerpapiClutchScraper
+from app.core.config import settings
 
 NORMALIZED_FIELDS = ["name", "email", "company", "role", "linkedin_url", "source", "company_size", "industry", "location"]
 
@@ -18,7 +19,11 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 		"linkedin": ProxycurlLinkedInScraper(),
 		"clutch": SerpapiClutchScraper(),
 	}
-	selected = providers or list(provider_map.keys())
+	configured = set(filter(None, (settings.ENABLED_SCRAPERS or "").lower().split(",")))
+	default_set = list(configured) if configured else []
+	selected = providers if providers is not None else default_set
+	if not selected:
+		return []
 	results: List[Dict[str, Any]] = []
 	seen: Set[str] = set()
 	for name in selected:
