@@ -20,6 +20,16 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 		"clutch": SerpapiClutchScraper(),
 	}
 	configured = set(filter(None, (settings.ENABLED_SCRAPERS or "").lower().split(",")))
+	# If not explicitly configured, auto-detect providers based on available API keys
+	if not configured:
+		if settings.APOLLO_API_KEY:
+			configured.add("apollo")
+		if settings.CRUNCHBASE_API_KEY:
+			configured.add("crunchbase")
+		if settings.PROXYCURL_API_KEY:
+			configured.add("linkedin")
+		if settings.SERPAPI_API_KEY:
+			configured.add("clutch")
 	default_set = list(configured) if configured else []
 	selected = providers if providers is not None else default_set
 	if not selected:
