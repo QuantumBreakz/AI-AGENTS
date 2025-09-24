@@ -1,4 +1,5 @@
 from typing import List, Optional
+import os
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -8,8 +9,78 @@ from app.core.db import get_db
 from app.models.lead import Lead
 from app.schemas.lead import LeadCreate, LeadOut, LeadUpdate
 from app.services.scrapers.aggregator import aggregate_search
+from app.core.config import settings
 
 router = APIRouter()
+
+@router.get("/debug-scrapers")
+async def debug_scrapers():
+	"""Debug endpoint to check scraper configuration"""
+	
+	api_status = {
+		"APOLLO_API_KEY": bool(settings.APOLLO_API_KEY),
+		"CRUNCHBASE_API_KEY": bool(settings.CRUNCHBASE_API_KEY),
+		"PROXYCURL_API_KEY": bool(settings.PROXYCURL_API_KEY),
+		"SERPAPI_API_KEY": bool(settings.SERPAPI_API_KEY),
+	}
+	
+	configured_scrapers = set(filter(None, (settings.ENABLED_SCRAPERS or "").lower().split(",")))
+	
+	auto_detected = []
+	if settings.APOLLO_API_KEY:
+		auto_detected.append("apollo")
+	if settings.CRUNCHBASE_API_KEY:
+		auto_detected.append("crunchbase")
+	if settings.PROXYCURL_API_KEY:
+		auto_detected.append("linkedin")
+	if settings.SERPAPI_API_KEY:
+		auto_detected.append("clutch")
+	
+	final_scrapers = list(configured_scrapers) if configured_scrapers else auto_detected
+	
+	# Check .env file locations
+	env_files_to_check = [
+		".env",
+		"../.env",
+		"../../.env",
+		os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"),
+		os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".env"),
+	]
+	
+	env_file_status = {}
+	for env_path in env_files_to_check:
+		env_file_status[env_path] = os.path.exists(env_path)
+	
+	return {
+		"api_keys_configured": api_status,
+		"explicitly_enabled_scrapers": list(configured_scrapers),
+		"auto_detected_scrapers": auto_detected,
+		"final_scrapers": final_scrapers,
+		"env_file_locations": env_file_status,
+		"mock_data_fallback": "enabled" if not final_scrapers else "disabled",
+		"current_working_directory": os.getcwd(),
+		"config_file_location": os.path.dirname(__file__)
+	}
+
+@router.get("/test-mock-scraping")
+async def test_mock_scraping():
+	"""Test scraping with mock data"""
+	query = {
+		"role": "CTO",
+		"industry": "Technology",
+		"location": "San Francisco",
+		"company_size": "startup"
+	}
+	
+	# Force mock data by passing empty providers list
+	records = await aggregate_search(query, providers=[])
+	
+	return {
+		"query": query,
+		"results": records,
+		"count": len(records),
+		"message": "Mock data generated successfully"
+	}
 
 @router.get("/", response_model=List[LeadOut])
 async def list_leads(

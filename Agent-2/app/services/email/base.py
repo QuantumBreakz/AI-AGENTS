@@ -1,16 +1,66 @@
 from typing import List
+import smtplib
+import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import logging
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 class EmailMessage:
-	def __init__(self, to: str, subject: str, body: str) -> None:
+	def __init__(self, to: str, subject: str, body: str, html_body: str = None) -> None:
 		self.to = to
 		self.subject = subject
 		self.body = body
+		self.html_body = html_body
 
 class EmailService:
 	async def send(self, messages: List[EmailMessage]) -> None:
 		raise NotImplementedError
+
+# Gmail SMTP implementation
+class GmailSMTPEmailService(EmailService):
+	async def send(self, messages: List[EmailMessage]) -> None:
+		if not (settings.GMAIL_SMTP_API_KEY and settings.EMAIL_FROM):
+			raise RuntimeError("Gmail SMTP not configured; set GMAIL_SMTP_API_KEY and EMAIL_FROM")
+		
+		# Gmail SMTP configuration
+		smtp_server = "smtp.gmail.com"
+		port = 587
+		
+		# Create SMTP session
+		context = ssl.create_default_context()
+		
+		try:
+			with smtplib.SMTP(smtp_server, port) as server:
+				server.starttls(context=context)
+				# Use the API key as password for Gmail
+				server.login(settings.EMAIL_FROM, settings.GMAIL_SMTP_API_KEY)
+				
+				for message in messages:
+					# Create message
+					msg = MIMEMultipart('alternative')
+					msg['Subject'] = message.subject
+					msg['From'] = settings.EMAIL_FROM
+					msg['To'] = message.to
+					
+					# Add text and HTML parts
+					text_part = MIMEText(message.body, 'plain')
+					msg.attach(text_part)
+					
+					if message.html_body:
+						html_part = MIMEText(message.html_body, 'html')
+						msg.attach(html_part)
+					
+					# Send email
+					server.send_message(msg)
+					logger.info(f"Email sent successfully to {message.to}")
+					
+		except Exception as e:
+			logger.error(f"Failed to send email via Gmail SMTP: {str(e)}")
+			raise
 
 # SES implementation
 class SESEmailService(EmailService):
@@ -51,8 +101,11 @@ class SendGridEmailService(EmailService):
 				)
 
 def get_email_service() -> EmailService:
-	if settings.EMAIL_PROVIDER == "sendgrid":
+	if settings.EMAIL_PROVIDER == "gmail":
+		return GmailSMTPEmailService()
+	elif settings.EMAIL_PROVIDER == "sendgrid":
 		return SendGridEmailService()
-	return SESEmailService()
+	else:
+		return SESEmailService()
 
 email_service = get_email_service()

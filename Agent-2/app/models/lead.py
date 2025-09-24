@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 
@@ -19,3 +19,7 @@ class Lead(Base):
 	stage: Mapped[str] = mapped_column(String(64), default="new")
 	created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 	updated_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+	
+	# Relationships
+	score: Mapped["LeadScore"] = relationship("LeadScore", back_populates="lead", uselist=False)
+	qualification: Mapped["LeadQualification"] = relationship("LeadQualification", back_populates="lead", uselist=False)

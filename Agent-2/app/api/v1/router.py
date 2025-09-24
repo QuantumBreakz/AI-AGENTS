@@ -6,6 +6,8 @@ from app.api.v1.routes.webhooks import router as webhooks_router
 from app.api.v1.routes.ai import router as ai_router
 from app.api.v1.routes.orchestrate import router as orchestrate_router
 from app.api.v1.routes.jobs import router as jobs_router
+from app.api.v1.routes.analytics import router as analytics_router
+from app.api.v1.routes.scoring import router as scoring_router
 
 api_router = APIRouter()
 api_router.include_router(leads_router, prefix="/leads", tags=["leads"])
@@ -14,3 +16,5 @@ api_router.include_router(webhooks_router, prefix="/webhooks", tags=["webhooks"]
 api_router.include_router(ai_router, prefix="/ai", tags=["ai"])
 api_router.include_router(orchestrate_router, prefix="/orchestrate", tags=["orchestrate"])
 api_router.include_router(jobs_router, prefix="/jobs", tags=["jobs"])
+api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(scoring_router, prefix="/scoring", tags=["scoring"])
