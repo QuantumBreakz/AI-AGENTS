@@ -15,6 +15,14 @@ async def get_campaign_performance(
     """Get performance metrics for a specific campaign"""
     return await campaign_analytics_service.get_campaign_performance(campaign_id, db)
 
+@router.get("/campaigns/overview")
+async def get_campaigns_overview(
+    days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get campaigns overview analytics"""
+    return await campaign_analytics_service.get_overall_analytics(db, days)
+
 @router.get("/overall")
 async def get_overall_analytics(
     days: int = Query(default=30, ge=1, le=365),
@@ -29,4 +37,12 @@ async def get_lead_performance_analytics(
     db: AsyncSession = Depends(get_db)
 ):
     """Get lead performance analytics"""
+    return await campaign_analytics_service.get_lead_performance_analytics(db, days)
+
+@router.get("/leads/performance")
+async def get_leads_performance(
+    days: int = Query(default=30, ge=1, le=365),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get leads performance analytics (alias for /leads)"""
     return await campaign_analytics_service.get_lead_performance_analytics(db, days)

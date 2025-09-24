@@ -26,7 +26,7 @@ class ScoringRuleUpdate(BaseModel):
     score: float = None
     is_active: bool = None
 
-@router.post("/leads/{lead_id}/score")
+@router.post("/calculate/{lead_id}")
 async def calculate_lead_score(
     lead_id: int,
     db: AsyncSession = Depends(get_db)
@@ -43,27 +43,23 @@ async def calculate_lead_score(
     qualification = await lead_scoring_service.qualify_lead(lead, db)
     
     return {
-        "lead_id": lead_id,
-        "score": {
-            "total_score": lead_score.total_score,
-            "qualification_status": lead_score.qualification_status,
-            "company_size_score": lead_score.company_size_score,
-            "industry_score": lead_score.industry_score,
-            "role_score": lead_score.role_score,
-            "location_score": lead_score.location_score,
-            "engagement_score": lead_score.engagement_score,
-            "email_quality_score": lead_score.email_quality_score
+        "score": lead_score.total_score if lead_score else 0,
+        "qualification_status": lead_score.qualification_status if lead_score else "unqualified",
+        "criteria_met": {
+            "company_size_score": lead_score.company_size_score if lead_score else 0,
+            "industry_score": lead_score.industry_score if lead_score else 0,
+            "role_score": lead_score.role_score if lead_score else 0,
+            "location_score": lead_score.location_score if lead_score else 0,
+            "engagement_score": lead_score.engagement_score if lead_score else 0,
+            "email_quality_score": lead_score.email_quality_score if lead_score else 0
         },
         "qualification": {
-            "is_qualified": qualification.is_qualified,
-            "reason": qualification.qualification_reason,
-            "has_email": qualification.has_email,
-            "has_linkedin": qualification.has_linkedin,
-            "has_company_info": qualification.has_company_info,
-            "has_role_info": qualification.has_role_info,
-            "email_opened": qualification.email_opened,
-            "email_clicked": qualification.email_clicked,
-            "email_replied": qualification.email_replied
+            "is_qualified": qualification.is_qualified if qualification else False,
+            "reason": qualification.qualification_reason if qualification else "No qualification data",
+            "has_email": qualification.has_email if qualification else False,
+            "has_linkedin": qualification.has_linkedin if qualification else False,
+            "has_company_info": qualification.has_company_info if qualification else False,
+            "has_role_info": qualification.has_role_info if qualification else False
         }
     }
 

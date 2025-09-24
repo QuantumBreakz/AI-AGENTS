@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -20,7 +21,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[CampaignOut])
 async def list_campaigns(db: AsyncSession = Depends(get_db)):
-	res = await db.execute(select(Campaign))
+	res = await db.execute(select(Campaign).options(selectinload(Campaign.emails)))
 	return list(res.scalars().all())
 
 @router.post("/", response_model=CampaignOut)
@@ -46,7 +47,8 @@ async def create_campaign(payload: CampaignCreate, db: AsyncSession = Depends(ge
 
 @router.get("/{campaign_id}", response_model=CampaignOut)
 async def get_campaign(campaign_id: int, db: AsyncSession = Depends(get_db)):
-	return await db.get(Campaign, campaign_id)
+	res = await db.execute(select(Campaign).where(Campaign.id == campaign_id).options(selectinload(Campaign.emails)))
+	return res.scalars().first()
 
 @router.patch("/{campaign_id}", response_model=CampaignOut)
 async def update_campaign(campaign_id: int, payload: CampaignUpdate, db: AsyncSession = Depends(get_db)):
