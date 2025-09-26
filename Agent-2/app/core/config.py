@@ -121,6 +121,10 @@ if not settings.SERPAPI_API_KEY:
 
 if not settings.SENDGRID_API_KEY:
 	settings.SENDGRID_API_KEY = _env_any("SENDGRID_KEY")
+if not settings.EMAIL_FROM:
+	settings.EMAIL_FROM = _env_any("FROM_EMAIL", "EMAIL_SENDER", "MAIL_FROM")
+if not settings.EMAIL_PROVIDER:
+	settings.EMAIL_PROVIDER = _env_any("MAIL_PROVIDER", "EMAIL_SERVICE") or settings.EMAIL_PROVIDER
 if not settings.PIPEDRIVE_API_TOKEN:
 	settings.PIPEDRIVE_API_TOKEN = _env_any("PIPEDRIVE_API_KEY", "PIPEDRIVE_TOKEN")
 if not settings.ZOHO_ACCESS_TOKEN:
