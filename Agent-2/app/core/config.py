@@ -80,6 +80,8 @@ class Settings(BaseSettings):
 	GMAIL_SMTP_API_KEY: str | None = None
 	ENABLED_CRMS: str | None = None
 	ENABLED_SCRAPERS: str | None = None
+	# Data integrity controls
+	REQUIRE_REAL_DATA: bool = True
 	# App settings
 	PROJECT_NAME: str = "Agent-2"
 	API_PREFIX: str = "/api/v1"
@@ -91,3 +93,37 @@ class Settings(BaseSettings):
 	)
 
 settings = Settings()
+
+# --- Environment normalization helpers & fallbacks ---
+def _env_any(*names: str) -> str | None:
+	for n in names:
+		v = os.getenv(n)
+		if v:
+			return v
+	return None
+
+# Accept common alternative env var names
+if not settings.OPENAI_API_KEY:
+	settings.OPENAI_API_KEY = _env_any("OPENAI_KEY", "OPENAI_API_TOKEN")
+if not settings.OPENAI_BASE_URL:
+	settings.OPENAI_BASE_URL = _env_any("OPENAI_API_BASE", "OPENAI_BASE_URL")
+if settings.OPENAI_API_KEY and not settings.ENABLE_OPENAI:
+	settings.ENABLE_OPENAI = True
+
+if not settings.APOLLO_API_KEY:
+	settings.APOLLO_API_KEY = _env_any("APOLLO_KEY")
+if not settings.CRUNCHBASE_API_KEY:
+	settings.CRUNCHBASE_API_KEY = _env_any("CRUNCHBASE_KEY")
+if not settings.PROXYCURL_API_KEY:
+	settings.PROXYCURL_API_KEY = _env_any("PROXYCURL_KEY", "PROXYCURL_TOKEN", "LINKEDIN_API_KEY")
+if not settings.SERPAPI_API_KEY:
+	settings.SERPAPI_API_KEY = _env_any("SERPAPI_KEY", "SERP_API_KEY")
+
+if not settings.SENDGRID_API_KEY:
+	settings.SENDGRID_API_KEY = _env_any("SENDGRID_KEY")
+if not settings.PIPEDRIVE_API_TOKEN:
+	settings.PIPEDRIVE_API_TOKEN = _env_any("PIPEDRIVE_API_KEY", "PIPEDRIVE_TOKEN")
+if not settings.ZOHO_ACCESS_TOKEN:
+	settings.ZOHO_ACCESS_TOKEN = _env_any("ZOHO_API_KEY", "ZOHO_TOKEN")
+if not settings.HUBSPOT_API_KEY:
+	settings.HUBSPOT_API_KEY = _env_any("HUBSPOT_KEY")

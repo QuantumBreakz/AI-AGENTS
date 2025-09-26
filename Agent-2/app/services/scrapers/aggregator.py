@@ -5,6 +5,7 @@ from app.services.scrapers.providers.apollo import ApolloScraper
 from app.services.scrapers.providers.crunchbase import CrunchbaseScraper
 from app.services.scrapers.providers.proxycurl import ProxycurlLinkedInScraper
 from app.services.scrapers.providers.serpapi_clutch import SerpapiClutchScraper
+from app.services.scrapers.providers.web_generic import WebGenericScraper
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 		"crunchbase": CrunchbaseScraper(),
 		"linkedin": ProxycurlLinkedInScraper(),
 		"clutch": SerpapiClutchScraper(),
+		"web": WebGenericScraper(),
 	}
 	
 	# Check for explicitly configured providers
@@ -108,8 +110,11 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 	
 	logger.info(f"✅ Final selected scrapers: {selected}")
 	
-	# If no providers selected, use mock data
+	# If no providers selected, use mock data only if not requiring real data
 	if not selected:
+		if settings.REQUIRE_REAL_DATA:
+			logger.warning("⚠️ No scrapers available and real data required; falling back to 'web' provider")
+			selected = ["web"]
 		logger.warning("⚠️ No scrapers available, using mock data")
 		return generate_mock_leads(query, count=10)
 	
@@ -131,7 +136,10 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 			
 			async for rec in scraper.search(query):
 				n = normalize(rec)
-				key = (n.get("email") or "").lower() or (n.get("linkedin_url") or "").lower()
+				email_key = (n.get("email") or "").lower()
+				li_key = (n.get("linkedin_url") or "").lower()
+				company_key = ((n.get("company") or "") + "|" + (n.get("role") or "")).strip().lower()
+				key = email_key or li_key or company_key
 				if not key or key in seen:
 					continue
 				seen.add(key)
@@ -147,8 +155,26 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 			logger.error(error_msg, exc_info=True)
 			errors.append(error_msg)
 	
-	# If no results from any scraper, fall back to mock data
+	# If no results from any scraper, try web provider when real data required; else optionally fall back to mock
 	if not results:
+		if settings.REQUIRE_REAL_DATA:
+			logger.warning("⚠️ No results from API scrapers; attempting 'web' provider for real data")
+			try:
+				web_scraper = provider_map.get("web")
+				if web_scraper:
+					async for rec in web_scraper.search(query):
+						n = normalize(rec)
+						email_key = (n.get("email") or "").lower()
+						li_key = (n.get("linkedin_url") or "").lower()
+						company_key = ((n.get("company") or "") + "|" + (n.get("role") or "")).strip().lower()
+						key = email_key or li_key or company_key
+						if not key or key in seen:
+							continue
+						seen.add(key)
+						results.append(n)
+			except Exception:
+				logger.debug("web_provider_fallback_failed", exc_info=True)
+			return results
 		logger.warning("⚠️ No results from any scraper, using mock data as fallback")
 		results = generate_mock_leads(query, count=10)
 	

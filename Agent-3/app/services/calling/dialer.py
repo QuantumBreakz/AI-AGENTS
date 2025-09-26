@@ -10,6 +10,16 @@ class Dialer(Protocol):
 	async def transfer_call(self, call_id: int, to_phone: str) -> None:
 		...
 
+class MockDialer:
+	async def start_call(self, call_id: int, phone: str) -> None:
+		print(f"📞 Mock dialer: Starting call {call_id} to {phone}")
+		# Simulate successful call initiation
+		return None
+	
+	async def transfer_call(self, call_id: int, to_phone: str) -> None:
+		print(f"📞 Mock dialer: Transferring call {call_id} to {to_phone}")
+		return None
+
 class TwilioDialer:
 	async def start_call(self, call_id: int, phone: str) -> None:
 		if not (settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM_NUMBER and settings.PUBLIC_BASE_URL):
@@ -35,6 +45,15 @@ class TwilioDialer:
 		# This requires knowing the CallSid; the transfer endpoint will be invoked from routes with CallSid
 		return None
 
-# default dialer instance
-
-dialer: Dialer = TwilioDialer()
+# default dialer instance - use mock if Twilio not configured
+if (settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and 
+    settings.TWILIO_FROM_NUMBER and settings.PUBLIC_BASE_URL):
+	dialer: Dialer = TwilioDialer()
+	print("✅ Twilio dialer configured")
+else:
+	print("⚠️ Twilio not fully configured, using mock dialer")
+	print(f"   - TWILIO_ACCOUNT_SID: {'✅' if settings.TWILIO_ACCOUNT_SID else '❌'}")
+	print(f"   - TWILIO_AUTH_TOKEN: {'✅' if settings.TWILIO_AUTH_TOKEN else '❌'}")
+	print(f"   - TWILIO_FROM_NUMBER: {'✅' if settings.TWILIO_FROM_NUMBER else '❌'}")
+	print(f"   - PUBLIC_BASE_URL: {'✅' if settings.PUBLIC_BASE_URL else '❌'}")
+	dialer: Dialer = MockDialer()

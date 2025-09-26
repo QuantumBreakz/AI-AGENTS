@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_AGENT2_API_URL as string
+const API = (process.env.NEXT_PUBLIC_AGENT2_API_URL as string) || 'http://localhost:8001/api/v1'
 
 async function getLeads() {
   const res = await fetch(`${API}/leads`, { cache: 'no-store' })

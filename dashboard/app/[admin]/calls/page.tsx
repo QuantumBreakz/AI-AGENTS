@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_AGENT3_API_URL as string
+const API = (process.env.NEXT_PUBLIC_AGENT3_API_URL as string) || 'http://localhost:8002/api/v1'
 
 async function getCalls() {
   const res = await fetch(`${API}/calls`, { cache: 'no-store' })

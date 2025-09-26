@@ -23,7 +23,17 @@ async def get_profile(db: AsyncSession = Depends(get_db)):
 		db.add(bp)
 		await db.commit()
 		await db.refresh(bp)
-	return bp.__dict__
+	
+	return {
+		"id": bp.id,
+		"industry": bp.industry,
+		"company_name": bp.company_name,
+		"company_phone": bp.company_phone,
+		"services_offered": bp.services_offered,
+		"greeting_script": bp.greeting_script,
+		"created_at": bp.created_at.isoformat() if bp.created_at else None,
+		"updated_at": bp.updated_at.isoformat() if bp.updated_at else None
+	}
 
 @router.post("/profile")
 async def update_profile(body: BusinessProfileUpdate, db: AsyncSession = Depends(get_db)):
@@ -33,4 +43,14 @@ async def update_profile(body: BusinessProfileUpdate, db: AsyncSession = Depends
 	db.add(bp)
 	await db.commit()
 	await db.refresh(bp)
-	return bp.__dict__
+	
+	return {
+		"id": bp.id,
+		"industry": bp.industry,
+		"company_name": bp.company_name,
+		"company_phone": bp.company_phone,
+		"services_offered": bp.services_offered,
+		"greeting_script": bp.greeting_script,
+		"created_at": bp.created_at.isoformat() if bp.created_at else None,
+		"updated_at": bp.updated_at.isoformat() if bp.updated_at else None
+	}
