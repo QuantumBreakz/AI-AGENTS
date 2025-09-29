@@ -1,7 +1,9 @@
+import './globals.css'
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html>
-      <body style={{ fontFamily: 'Inter, system-ui, Arial, sans-serif', padding: 16 }}>
+    <html lang="en">
+      <body className="bg-gray-50 font-sans antialiased">
         {children}
       </body>
     </html>

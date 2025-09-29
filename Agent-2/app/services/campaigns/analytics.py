@@ -243,3 +243,4 @@ class CampaignAnalyticsService:
 
 # Global instance
 campaign_analytics_service = CampaignAnalyticsService()
+

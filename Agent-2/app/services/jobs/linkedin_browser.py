@@ -92,3 +92,4 @@ class LinkedInBrowserAutomation:
         # This would contain logic to fill out various form fields
         # based on the job application requirements
         pass
+

@@ -73,3 +73,4 @@ class LinkedInJobService:
             "status": "pending",
             "message": "Status check not available via API"
         }
+

@@ -68,3 +68,4 @@ class LeadQualification(Base):
 	
 	# Relationships
 	lead: Mapped["Lead"] = relationship("Lead", back_populates="qualification")
+

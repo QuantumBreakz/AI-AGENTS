@@ -1,11 +1,19 @@
 from typing import Mapping, Any, AsyncIterator
-
-import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
-from app.core.config import settings
-from httpx import HTTPStatusError
 import logging
+
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
+
+# Try to import httpx and tenacity, but handle gracefully if not available
+try:
+	import httpx
+	from tenacity import retry, stop_after_attempt, wait_exponential
+	from httpx import HTTPStatusError
+	HTTPX_AVAILABLE = True
+except ImportError:
+	logger.warning("⚠️ httpx or tenacity not available, Apollo scraper will be disabled")
+	HTTPX_AVAILABLE = False
 
 API_KEY = settings.APOLLO_API_KEY
 BASE_URL = "https://api.apollo.io/v1"
@@ -13,10 +21,25 @@ BASE_URL = "https://api.apollo.io/v1"
 class ApolloScraper:
 	name = "apollo"
 
-	@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
 	async def search(self, query: Mapping[str, Any]) -> AsyncIterator[Mapping[str, Any]]:
-		if not API_KEY:
+		if not HTTPX_AVAILABLE:
+			logger.warning("⚠️ httpx not available, Apollo scraper disabled")
 			return
+		
+		if not API_KEY:
+			logger.warning("⚠️ Apollo API key not configured")
+			return
+		
+		# Apply retry decorator only if tenacity is available
+		if HTTPX_AVAILABLE:
+			search_func = retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))(self._search_impl)
+		else:
+			search_func = self._search_impl
+		
+		async for result in search_func(query):
+			yield result
+	
+	async def _search_impl(self, query: Mapping[str, Any]) -> AsyncIterator[Mapping[str, Any]]:
 		
 		# Try the people search endpoint first (available on free plan)
 		payload = {

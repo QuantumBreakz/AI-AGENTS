@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.core.db import get_db
 from app.models.lead import Lead
-from app.models.lead_score import ScoringRule
+from app.models.lead_score import ScoringRule, LeadScore
 from app.services.leads.scoring import lead_scoring_service
 
 router = APIRouter()
@@ -113,8 +113,11 @@ async def get_top_scored_leads(
     """Get top scored leads"""
     from sqlalchemy import select, desc
     
+    from sqlalchemy.orm import selectinload
+    
     result = await db.execute(
         select(Lead)
+        .options(selectinload(Lead.score))
         .join(Lead.score)
         .order_by(desc(LeadScore.total_score))
         .limit(limit)

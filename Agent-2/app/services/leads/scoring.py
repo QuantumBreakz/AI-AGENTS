@@ -259,3 +259,4 @@ class LeadScoringService:
 
 # Global instance
 lead_scoring_service = LeadScoringService()
+

@@ -10,6 +10,19 @@ from app.services.jobs.auto_apply import auto_apply_linkedin, auto_apply_handsha
 
 router = APIRouter()
 
+@router.get("/profile")
+async def get_profile(db: AsyncSession = Depends(get_db)):
+	profile = await db.get(ApplicantProfile, 1)
+	if not profile:
+		return {"name": "", "email": "", "job_title_pref": "", "location_pref": "", "resume_path": ""}
+	return {
+		"name": profile.name or "",
+		"email": profile.email or "",
+		"job_title_pref": profile.job_title_pref or "",
+		"location_pref": profile.location_pref or "",
+		"resume_path": profile.resume_path or ""
+	}
+
 @router.post("/profile/upload-resume")
 async def upload_resume(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
 	# store to disk; in production, store to S3/GCS
