@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import smtplib
 import ssl
 from email.mime.text import MIMEText
@@ -16,13 +16,14 @@ class EmailMessage:
 		self.body = body
 		self.html_body = html_body
 
+
 class EmailService:
-	async def send(self, messages: List[EmailMessage]) -> None:
+	async def send(self, messages: List[EmailMessage]) -> List[Tuple[str | None, str]]:
 		raise NotImplementedError
 
 # Gmail SMTP implementation
 class GmailSMTPEmailService(EmailService):
-	async def send(self, messages: List[EmailMessage]) -> None:
+	async def send(self, messages: List[EmailMessage]) -> List[Tuple[str | None, str]]:
 		if not (settings.GMAIL_SMTP_API_KEY and settings.EMAIL_FROM):
 			raise RuntimeError("Gmail SMTP not configured; set GMAIL_SMTP_API_KEY and EMAIL_FROM")
 		
@@ -33,6 +34,7 @@ class GmailSMTPEmailService(EmailService):
 		# Create SMTP session
 		context = ssl.create_default_context()
 		
+		results: List[Tuple[str | None, str]] = []
 		try:
 			with smtplib.SMTP(smtp_server, port) as server:
 				server.starttls(context=context)
@@ -55,23 +57,28 @@ class GmailSMTPEmailService(EmailService):
 						msg.attach(html_part)
 					
 					# Send email
-					server.send_message(msg)
+					resp = server.send_message(msg)
+					# SMTP doesn't return a message-id when using send_message easily; capture from headers if present
+					provider_id = msg.get('Message-Id') or None
+					results.append((provider_id, message.to))
 					logger.info(f"Email sent successfully to {message.to}")
 					
 		except Exception as e:
 			logger.error(f"Failed to send email via Gmail SMTP: {str(e)}")
 			raise
+		return results
 
 # SES implementation
 class SESEmailService(EmailService):
-	async def send(self, messages: List[EmailMessage]) -> None:
+	async def send(self, messages: List[EmailMessage]) -> List[Tuple[str | None, str]]:
 		import boto3
 		from botocore.config import Config as BotoConfig
 		if not (settings.SES_REGION and settings.EMAIL_FROM):
 			raise RuntimeError("SES not configured; set SES_REGION and EMAIL_FROM")
 		ses = boto3.client("ses", region_name=settings.SES_REGION, config=BotoConfig(retries={"max_attempts": 3}))
+		results: List[Tuple[str | None, str]] = []
 		for m in messages:
-			ses.send_email(
+			resp = ses.send_email(
 				Source=settings.EMAIL_FROM,
 				Destination={"ToAddresses": [m.to]},
 				Message={
@@ -79,13 +86,17 @@ class SESEmailService(EmailService):
 					"Body": {"Text": {"Data": m.body}},
 				},
 			)
+			provider_id = resp.get("MessageId")
+			results.append((provider_id, m.to))
+		return results
 
 # SendGrid implementation
 class SendGridEmailService(EmailService):
-	async def send(self, messages: List[EmailMessage]) -> None:
+	async def send(self, messages: List[EmailMessage]) -> List[Tuple[str | None, str]]:
 		import httpx
 		if not (settings.SENDGRID_API_KEY and settings.EMAIL_FROM):
 			raise RuntimeError("SendGrid not configured; set SENDGRID_API_KEY and EMAIL_FROM")
+		results: List[Tuple[str | None, str]] = []
 		async with httpx.AsyncClient(timeout=30) as client:
 			for m in messages:
 				payload = {
@@ -94,11 +105,14 @@ class SendGridEmailService(EmailService):
 					"subject": m.subject,
 					"content": [{"type": "text/plain", "value": m.body}],
 				}
-				await client.post(
+				resp = await client.post(
 					"https://api.sendgrid.com/v3/mail/send",
 					headers={"Authorization": f"Bearer {settings.SENDGRID_API_KEY}", "Content-Type": "application/json"},
 					json=payload,
 				)
+				provider_id = resp.headers.get("X-Message-Id") or None
+				results.append((provider_id, m.to))
+		return results
 
 def get_email_service() -> EmailService:
 	if settings.EMAIL_PROVIDER == "gmail":

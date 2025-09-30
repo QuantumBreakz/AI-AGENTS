@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import logging
 
 from app.models.campaign import Campaign, CampaignRecipient, CampaignEmail
+from app.models.email_tracking import EmailMessageLog, CampaignRecipientEvent
 from app.models.lead import Lead
 from app.models.lead_score import LeadScore
 
@@ -35,12 +36,20 @@ class CampaignAnalyticsService:
         
         # Calculate metrics
         total_recipients = len(recipients)
-        emails_sent = sum(1 for r in recipients if r.last_sent_at is not None)
+        # Use recipient events/logs for sent count when available
+        sent_events_result = await db.execute(
+            select(CampaignRecipientEvent).where(CampaignRecipientEvent.recipient_id.in_([r.id for r in recipients])).where(CampaignRecipientEvent.event_type == "sent")
+        )
+        emails_sent = len(list(sent_events_result.scalars().all()))
         paused_recipients = sum(1 for r in recipients if r.paused)
         active_recipients = total_recipients - paused_recipients
         
         # Engagement metrics (simplified - would need webhook tracking for real data)
-        replied_recipients = sum(1 for r in recipients if r.paused and r.current_step > 0)
+        # Replies from logs
+        reply_logs_result = await db.execute(
+            select(EmailMessageLog).where(EmailMessageLog.recipient_id.in_([r.id for r in recipients])).where(EmailMessageLog.status == "replied")
+        )
+        replied_recipients = len(list(reply_logs_result.scalars().all()))
         
         # Calculate rates
         delivery_rate = (emails_sent / total_recipients * 100) if total_recipients > 0 else 0
@@ -108,9 +117,15 @@ class CampaignAnalyticsService:
             recipients = list(recipients_result.scalars().all())
             
             total_recipients += len(recipients)
-            emails_sent = sum(1 for r in recipients if r.last_sent_at is not None)
+            sent_events_result = await db.execute(
+                select(CampaignRecipientEvent).where(CampaignRecipientEvent.recipient_id.in_([r.id for r in recipients])).where(CampaignRecipientEvent.event_type == "sent")
+            )
+            emails_sent = len(list(sent_events_result.scalars().all()))
             total_emails_sent += emails_sent
-            replied = sum(1 for r in recipients if r.paused and r.current_step > 0)
+            reply_logs_result = await db.execute(
+                select(EmailMessageLog).where(EmailMessageLog.recipient_id.in_([r.id for r in recipients])).where(EmailMessageLog.status == "replied")
+            )
+            replied = len(list(reply_logs_result.scalars().all()))
             total_replies += replied
             
             campaign_performances.append({

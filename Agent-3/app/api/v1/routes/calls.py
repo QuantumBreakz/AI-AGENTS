@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from app.core.db import get_db
-from app.models.call import CallSession, CallNote
+from app.models.call import CallSession, CallNote, CallEvent
 from app.services.calling.dialer import dialer
 from app.services.calling.voice_agent import voice_agent
 from app.services.crm.manager import crm_manager
@@ -47,6 +47,50 @@ async def list_calls(db: AsyncSession = Depends(get_db)):
 		}
 		for c in calls
 	]
+
+@router.get("/{call_id}/events")
+async def get_call_events(call_id: int, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select, desc
+    cs = await db.get(CallSession, call_id)
+    if not cs:
+        return []
+    res = await db.execute(select(CallEvent).where(CallEvent.call_id == call_id).order_by(desc(CallEvent.created_at)))
+    events = list(res.scalars().all())
+    return [
+        {
+            "id": e.id,
+            "event_type": e.event_type,
+            "payload": e.payload,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in events
+    ]
+
+class UpdateDispositionRequest(BaseModel):
+    stage: str | None = None
+    disposition: str | None = None
+    note: str | None = None
+
+@router.post("/{call_id}/disposition")
+async def update_disposition(call_id: int, body: UpdateDispositionRequest, db: AsyncSession = Depends(get_db)):
+    cs = await db.get(CallSession, call_id)
+    if not cs:
+        return {"ok": False}
+    if body.stage:
+        cs.stage = body.stage
+    if body.disposition:
+        cs.disposition = body.disposition
+    if body.note:
+        db.add(CallNote(call_id=cs.id, content=body.note))
+    db.add(CallEvent(call_id=cs.id, event_type="manual_update", payload=str(body.model_dump(exclude_none=True))))
+    db.add(cs)
+    await db.commit()
+    if cs.email:
+        if body.stage:
+            await crm_manager.update_stage(cs.email, body.stage)
+        if body.note:
+            await crm_manager.add_note(cs.email, body.note)
+    return {"ok": True}
 
 @router.post("/start")
 async def start_calls(body: StartCallsRequest, db: AsyncSession = Depends(get_db)):

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Layout from '../../components/Layout'
+import { apiFetch } from '../../utils/api'
 import { 
   ChartBarIcon,
   ArrowPathIcon,
@@ -13,7 +14,7 @@ import {
   PhoneIcon
 } from '@heroicons/react/24/outline'
 
-const API = (process.env.NEXT_PUBLIC_AGENT2_API_URL as string) || 'http://localhost:8001/api/v1'
+const API = ''
 
 interface AnalyticsData {
   totalLeads: number
@@ -62,39 +63,21 @@ export default function AnalyticsPage() {
     try {
       setLoading(true)
       
-      // Fetch analytics data from Agent-2
-      const [leadsRes, campaignsRes, analyticsRes] = await Promise.all([
-        fetch(`${API}/leads/`),
-        fetch(`${API}/campaigns/`),
-        fetch(`${API}/analytics/overall`)
+      const [overall] = await Promise.all([
+        apiFetch('/analytics/overall', {}, 2),
       ])
-      
-      const leads = leadsRes.ok ? await leadsRes.json() : []
-      const campaigns = campaignsRes.ok ? await campaignsRes.json() : []
-      const analyticsData = analyticsRes.ok ? await analyticsRes.json() : {}
-      
-      // Calculate metrics
-      const totalLeads = leads.length
-      const totalCampaigns = campaigns.length
-      const activeCampaigns = campaigns.filter((c: any) => c.status === 'active').length
-      
-      // Mock some additional metrics for demo
-      const conversionRate = Math.round(Math.random() * 30 + 10)
-      const openRate = Math.round(Math.random() * 40 + 20)
-      const clickRate = Math.round(Math.random() * 10 + 2)
-      const responseRate = Math.round(Math.random() * 25 + 5)
-      
+
       setAnalytics({
-        totalLeads,
-        totalCampaigns,
-        totalCalls: Math.floor(totalLeads * 0.3), // Mock calls data
-        conversionRate,
-        openRate,
-        clickRate,
-        responseRate,
-        leadsGrowth: Math.round(Math.random() * 20 - 5),
-        campaignsGrowth: Math.round(Math.random() * 15 - 3),
-        callsGrowth: Math.round(Math.random() * 25 - 8)
+        totalLeads: overall?.summary?.total_recipients ?? 0,
+        totalCampaigns: overall?.summary?.total_campaigns ?? 0,
+        totalCalls: 0,
+        conversionRate: overall?.summary?.overall_reply_rate ?? 0,
+        openRate: 0,
+        clickRate: 0,
+        responseRate: overall?.summary?.overall_reply_rate ?? 0,
+        leadsGrowth: 0,
+        campaignsGrowth: 0,
+        callsGrowth: 0
       })
       
       setLastUpdated(new Date())

@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.models.campaign import Campaign, CampaignEmail, CampaignEmailVariant, CampaignRecipient
+from app.models.email_tracking import CampaignRecipientEvent, EmailMessageLog
+from app.models.locks import SchedulerLock
+
 from app.schemas.campaign import (
 	CampaignCreate,
 	CampaignOut,
@@ -20,8 +23,13 @@ from app.services.ai.suggest import suggest
 router = APIRouter()
 
 @router.get("/", response_model=List[CampaignOut])
-async def list_campaigns(db: AsyncSession = Depends(get_db)):
-	res = await db.execute(select(Campaign).options(selectinload(Campaign.emails)))
+async def list_campaigns(skip: int = 0, limit: int = 50, db: AsyncSession = Depends(get_db), response: Response | None = None):
+	from sqlalchemy import func
+	base = select(Campaign)
+	if response is not None:
+		count_res = await db.execute(select(func.count()).select_from(base.subquery()))
+		response.headers["X-Total-Count"] = str(count_res.scalar_one() or 0)
+	res = await db.execute(base.options(selectinload(Campaign.emails)).offset(skip).limit(limit))
 	return list(res.scalars().all())
 
 @router.post("/", response_model=CampaignOut)
@@ -145,3 +153,16 @@ async def generate_sequence(campaign_id: int, body: GenerateSequenceRequest, db:
 		db.add(CampaignEmail(campaign_id=campaign.id, sequence_order=i + 1, subject_template=f"{body.offer} — Step {i+1}", body_template=t, send_delay_hours=24 if i else 0, is_follow_up=i>0))
 	await db.commit()
 	return {"ok": True, "steps": len(texts)}
+
+# --- Admin: force release scheduler lock ---
+
+@router.post("/admin/scheduler/unlock")
+async def force_unlock_scheduler(db: AsyncSession = Depends(get_db)):
+    lock = await db.get(SchedulerLock, "campaign_scheduler")
+    if not lock:
+        return {"ok": True, "message": "No lock present"}
+    lock.owner_token = None
+    lock.expires_at = None
+    db.add(lock)
+    await db.commit()
+    return {"ok": True}

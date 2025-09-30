@@ -20,6 +20,11 @@ AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=As
 async def init_db() -> None:
 	# Import models to register metadata
 	from app.models import lead, campaign  # noqa: F401
+	from app.models import lead_note, lead_score  # noqa: F401
+	from app.models import email_tracking  # noqa: F401
+	from app.models import user  # noqa: F401
+	from app.models import locks  # noqa: F401
+	from app.models import scraping  # noqa: F401
 	async with engine.begin() as conn:
 		await conn.run_sync(Base.metadata.create_all)
 

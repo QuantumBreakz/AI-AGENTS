@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.models.call import CallSession, CallNote
+from app.models.call import CallSession, CallNote, CallEvent
 from app.models.business import BusinessProfile
 from app.services.calling.voice_agent import voice_agent
 from app.services.crm.manager import crm_manager
@@ -39,20 +39,40 @@ def _validate_twilio_signature(request: Request, body: dict) -> None:
 	if expected != signature:
 		raise HTTPException(status_code=401, detail="Invalid Twilio signature")
 
+def _map_status_to_disposition(status: str | None) -> str | None:
+    if not status:
+        return None
+    status = status.lower()
+    if status in ("completed", "answered"):
+        return "completed"
+    if status in ("busy", "no-answer"):
+        return "no_answer"
+    if status in ("failed",):
+        return "failed"
+    return status
+
 @router.post("/voice/status")
 async def voice_status(request: Request, db: AsyncSession = Depends(get_db)):
 	form = await request.form()
 	_validate_twilio_signature(request, form)
 	call_sid = form.get("CallSid")
 	call_id = form.get("call_id") or form.get("CallId")
+    call_status = form.get("CallStatus")
 	if call_id:
 		try:
 			cid = int(call_id)
 			cs = await db.get(CallSession, cid)
 			if cs and call_sid and not cs.twilio_call_sid:
 				cs.twilio_call_sid = call_sid
-				db.add(cs)
-				await db.commit()
+            if cs and call_status:
+                cs.status = call_status
+                disp = _map_status_to_disposition(call_status)
+                if disp:
+                    cs.disposition = disp
+                db.add(CallEvent(call_id=cs.id, event_type=call_status, payload=str(dict(form))))
+            if cs:
+                db.add(cs)
+                await db.commit()
 		except Exception:
 			pass
 	return {"ok": True}
@@ -101,7 +121,7 @@ async def voice_gather(request: Request, db: AsyncSession = Depends(get_db)):
 		cs = res.scalars().first()
 	biz = await _get_business(db)
 	pitch = await voice_agent.generate_pitch({"business": biz, "user_input": speech_result})
-	if cs and speech_result:
+    if cs and speech_result:
 		db.add(CallNote(call_id=cs.id, content=f"User said: {speech_result}"))
 		await db.commit()
 		if cs.email:
@@ -114,6 +134,66 @@ async def voice_gather(request: Request, db: AsyncSession = Depends(get_db)):
 		"</Response>"
 	)
 	return Response(content=twiml, media_type="application/xml")
+
+@router.post("/voice/recording")
+async def voice_recording(request: Request, db: AsyncSession = Depends(get_db)):
+    form = await request.form()
+    _validate_twilio_signature(request, form)
+    call_sid = form.get("CallSid")
+    recording_url = form.get("RecordingUrl")
+    from sqlalchemy import select
+    if call_sid:
+        res = await db.execute(select(CallSession).where(CallSession.twilio_call_sid == call_sid))
+        cs = res.scalars().first()
+        if cs and recording_url:
+            cs.recording_url = recording_url
+            db.add(CallEvent(call_id=cs.id, event_type="recording", payload=str(dict(form))))
+            db.add(cs)
+            await db.commit()
+    return {"ok": True}
+
+@router.post("/voice/completed")
+async def voice_completed(request: Request, db: AsyncSession = Depends(get_db)):
+    form = await request.form()
+    _validate_twilio_signature(request, form)
+    call_sid = form.get("CallSid")
+    call_status = form.get("CallStatus")
+    recording_url = form.get("RecordingUrl")
+    from sqlalchemy import select
+    cs = None
+    if call_sid:
+        res = await db.execute(select(CallSession).where(CallSession.twilio_call_sid == call_sid))
+        cs = res.scalars().first()
+    if cs:
+        cs.status = call_status or cs.status
+        disp = _map_status_to_disposition(call_status)
+        if disp:
+            cs.disposition = disp
+        if recording_url and not cs.recording_url:
+            cs.recording_url = recording_url
+        db.add(CallEvent(call_id=cs.id, event_type="completed", payload=str(dict(form))))
+        db.add(cs)
+        await db.commit()
+    return {"ok": True}
+
+@router.post("/voice/transcription")
+async def voice_transcription(request: Request, db: AsyncSession = Depends(get_db)):
+    form = await request.form()
+    _validate_twilio_signature(request, form)
+    call_sid = form.get("CallSid")
+    transcript_text = form.get("TranscriptionText") or form.get("transcript")
+    from sqlalchemy import select
+    if call_sid and transcript_text:
+        res = await db.execute(select(CallSession).where(CallSession.twilio_call_sid == call_sid))
+        cs = res.scalars().first()
+        if cs:
+            cs.transcript = transcript_text
+            db.add(CallEvent(call_id=cs.id, event_type="transcription", payload=str(dict(form))))
+            db.add(cs)
+            await db.commit()
+            if cs.email:
+                await crm_manager.add_note(cs.email, f"Call transcription: {transcript_text[:800]}")
+    return {"ok": True}
 
 @router.post("/voice/transfer")
 async def voice_transfer(request: Request, db: AsyncSession = Depends(get_db)):

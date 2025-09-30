@@ -8,20 +8,42 @@ def find_env_file() -> str | None:
 	"""Find the first existing .env file in multiple locations"""
 	# Get the directory where this config.py file is located
 	current_dir = os.path.dirname(__file__)
+	# Allow override via ENV_FILE
+	env_override = os.getenv("ENV_FILE")
+	if env_override and os.path.exists(env_override):
+		logger.info(f"📁 Using ENV_FILE override: {env_override}")
+		return env_override
 	
 	env_files = [
 		# Agent-3/.env (most likely location)
 		os.path.join(current_dir, "..", "..", ".env"),
+		os.path.join(current_dir, "..", "..", ".env.local"),
+		os.path.join(current_dir, "..", "..", ".env.development"),
+		os.path.join(current_dir, "..", "..", ".env.production"),
 		# Current working directory
 		".env",
+		".env.local",
+		".env.development",
+		".env.production",
 		# Parent directory
 		"../.env",
+		"../.env.local",
+		"../.env.development",
+		"../.env.production",
 		# Root directory
 		"../../.env",
+		"../../.env.local",
+		"../../.env.development",
+		"../../.env.production",
 		# Absolute paths for Agent-3
 		"/Users/aliahmed/Downloads/Upwork/Agents/Agent-3/.env",
+		"/Users/aliahmed/Downloads/Upwork/Agents/Agent-3/.env.local",
 		# Absolute path for root
 		"/Users/aliahmed/Downloads/Upwork/Agents/.env",
+		"/Users/aliahmed/Downloads/Upwork/Agents/.env.local",
+		# Also try CWD absolute path
+		os.path.join(os.getcwd(), ".env"),
+		os.path.join(os.getcwd(), ".env.local"),
 	]
 	
 	# Remove duplicates while preserving order

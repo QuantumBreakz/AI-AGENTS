@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import uuid
+import logging
 import asyncio
 
 from app.core.config import settings
@@ -27,6 +29,17 @@ app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+
+request_logger = logging.getLogger("request")
+
+@app.middleware("http")
+async def add_request_id_and_log(request: Request, call_next):
+	request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+	request.state.request_id = request_id
+	response = await call_next(request)
+	response.headers["X-Request-ID"] = request_id
+	request_logger.info(f"{request.method} {request.url.path}", extra={"request_id": request_id})
+	return response
 
 @app.on_event("startup")
 async def on_startup() -> None:

@@ -14,8 +14,7 @@ import {
   ChatBubbleLeftRightIcon
 } from '@heroicons/react/24/outline'
 import { formatDate, formatDateTime } from '../../utils/date'
-
-const API = (process.env.NEXT_PUBLIC_AGENT3_API_URL as string) || 'http://localhost:8002/api/v1'
+import { apiFetch } from '../../utils/api'
 
 interface CallNote {
   id: number
@@ -41,6 +40,8 @@ export default function CallsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [selectedCall, setSelectedCall] = useState<Call | null>(null)
+  const [events, setEvents] = useState<any[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
 
   useEffect(() => {
     fetchCalls()
@@ -49,14 +50,24 @@ export default function CallsPage() {
   const fetchCalls = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${API}/calls`)
-      if (!res.ok) throw new Error('Failed to load calls')
-      const data = await res.json()
+      const data = await apiFetch('/calls', {}, 3)
       setCalls(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchEvents = async (callId: number) => {
+    try {
+      setEventsLoading(true)
+      const evts = await apiFetch(`/calls/${callId}/events`, {}, 3)
+      setEvents(evts)
+    } catch (e) {
+      setEvents([])
+    } finally {
+      setEventsLoading(false)
     }
   }
 
@@ -329,7 +340,7 @@ export default function CallsPage() {
                     <td className="table td">
                       <div className="flex space-x-2">
                         <button 
-                          onClick={() => setSelectedCall(call)}
+                          onClick={() => { setSelectedCall(call); fetchEvents(call.id) }}
                           className="text-blue-600 hover:text-blue-900 text-sm"
                         >
                           View
@@ -403,6 +414,22 @@ export default function CallsPage() {
                       ))}
                       {selectedCall.notes.length === 0 && (
                         <p className="text-sm text-gray-500">No notes available</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Events</label>
+                    <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                      {eventsLoading && <p className="text-sm text-gray-500">Loading events...</p>}
+                      {!eventsLoading && events.map((e) => (
+                        <div key={e.id} className="bg-gray-50 p-3 rounded-md">
+                          <p className="text-sm text-gray-900 capitalize">{e.event_type}</p>
+                          <p className="text-xs text-gray-500 mt-1">{formatDateTime(e.created_at)}</p>
+                        </div>
+                      ))}
+                      {!eventsLoading && events.length === 0 && (
+                        <p className="text-sm text-gray-500">No events</p>
                       )}
                     </div>
                   </div>

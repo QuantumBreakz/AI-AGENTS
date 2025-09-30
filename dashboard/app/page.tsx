@@ -11,18 +11,17 @@ import {
   ArrowPathIcon,
   PlusIcon,
   EyeIcon,
-  TrendingUpIcon,
-  TrendingDownIcon,
+  
+  
   ClockIcon,
   CheckCircleIcon,
   XCircleIcon,
   ExclamationTriangleIcon,
   SparklesIcon
 } from '@heroicons/react/24/outline'
+import { apiFetch } from './utils/api'
 
 const ADMIN_PATH = process.env.NEXT_PUBLIC_ADMIN_PATH || 'admin'
-const AGENT2_API = (process.env.NEXT_PUBLIC_AGENT2_API_URL as string) || 'http://localhost:8001/api/v1'
-const AGENT3_API = (process.env.NEXT_PUBLIC_AGENT3_API_URL as string) || 'http://localhost:8002/api/v1'
 
 interface DashboardStats {
   totalLeads: number
@@ -77,17 +76,12 @@ export default function Page() {
     try {
       setLoading(true)
       
-      // Fetch data from both agents in parallel
-      const [leadsRes, campaignsRes, callsRes] = await Promise.all([
-        fetch(`${AGENT2_API}/leads/`),
-        fetch(`${AGENT2_API}/campaigns/`),
-        fetch(`${AGENT3_API}/calls`)
-      ])
-
-      const [leads, campaigns, calls] = await Promise.all([
-        leadsRes.ok ? leadsRes.json() : [],
-        campaignsRes.ok ? campaignsRes.json() : [],
-        callsRes.ok ? callsRes.json() : []
+      // Fetch data from both agents in parallel (real endpoints via apiFetch)
+      const [analytics, leads, campaigns, calls] = await Promise.all([
+        apiFetch('/analytics/overall', {}, 2),
+        apiFetch('/leads/', {}, 2),
+        apiFetch('/campaigns/', {}, 2),
+        apiFetch('/calls', {}, 3)
       ])
 
       // Calculate today's calls
@@ -96,21 +90,19 @@ export default function Page() {
         new Date(call.created_at).toDateString() === today
       ).length
 
-      // Calculate conversion rate (simplified)
+      // Conversion rate from analytics if available, else compute from calls
       const completedCalls = calls.filter((call: any) => call.status === 'completed').length
-      const conversionRate = calls.length > 0 ? Math.round((completedCalls / calls.length) * 100) : 0
+      const conversionRate = analytics?.summary?.overall_reply_rate ?? (calls.length > 0 ? Math.round((completedCalls / calls.length) * 100) : 0)
 
       // Calculate additional metrics
       const newLeadsToday = leads.filter((lead: any) => 
         new Date(lead.created_at).toDateString() === today
       ).length
       
-      const emailsSentToday = campaigns.reduce((total: number, campaign: any) => {
-        return total + (campaign.emails_sent || 0)
-      }, 0)
+      const emailsSentToday = analytics?.summary?.total_emails_sent ?? 0
       
       const callsCompleted = calls.filter((call: any) => call.status === 'completed').length
-      const responseRate = leads.length > 0 ? Math.round((leads.filter((lead: any) => lead.status === 'responded').length / leads.length) * 100) : 0
+      const responseRate = typeof analytics?.summary?.overall_reply_rate === 'number' ? analytics.summary.overall_reply_rate : 0
 
       setStats({
         totalLeads: leads.length,
@@ -182,63 +174,42 @@ export default function Page() {
       
       switch (action) {
         case 'scrape_leads':
-          const scrapeRes = await fetch(`${AGENT2_API}/leads/scrape?company_size=10-50&role=CEO&industry=Technology&limit=50`, {
-            method: 'POST'
-          })
-          if (scrapeRes.ok) {
-            const result = await scrapeRes.json()
-            alert(`Lead scraping completed! Found ${result.length} new leads.`)
-            fetchDashboardData()
-          } else {
-            const error = await scrapeRes.text()
-            alert(`Failed to scrape leads: ${error}`)
-          }
+          const resultScrape = await apiFetch(`/leads/scrape?company_size=10-50&role=CEO&industry=Technology&limit=50`, { method: 'POST' }, 2)
+          alert(`Lead scraping completed! Found ${resultScrape.length} new leads.`)
+          fetchDashboardData()
           break
           
         case 'start_campaign':
-          const campaignRes = await fetch(`${AGENT2_API}/campaigns/`, {
+          const resultCamp = await apiFetch(`/campaigns/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: 'Quick Campaign',
-              subject: 'Quick Outreach',
-              content: 'Hello! I wanted to reach out...',
-              status: 'active'
+              offer: 'Quick Outreach',
+              status: 'active',
+              emails: [
+                { subject_template: 'Quick Outreach', body_template: 'Hello! I wanted to reach out...', send_delay_hours: 0, is_follow_up: false }
+              ]
             })
-          })
-          if (campaignRes.ok) {
-            const result = await campaignRes.json()
-            alert(`Quick campaign created! Campaign ID: ${result.id}`)
-            fetchDashboardData()
-          } else {
-            const error = await campaignRes.text()
-            alert(`Failed to create campaign: ${error}`)
-          }
+          }, 2)
+          alert(`Quick campaign created! Campaign ID: ${resultCamp.id}`)
+          fetchDashboardData()
           break
           
         case 'start_calls':
-          const callsRes = await fetch(`${AGENT3_API}/calls/start`, {
+          await apiFetch(`/calls/start`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              targets: [{ phone: '+1234567890', name: 'Test Lead' }],
-              campaign_type: 'general'
+              targets: [{ phone: '+1234567890' }],
+              campaign_offer: 'general'
             })
-          })
-          if (callsRes.ok) {
-            const result = await callsRes.json()
-            alert(`AI calls started! ${result.message || 'Check the calls page for progress.'}`)
-            fetchDashboardData()
-          } else {
-            const error = await callsRes.text()
-            alert(`Failed to start calls: ${error}`)
-          }
+          }, 3)
+          alert('AI calls started! Check the calls page for progress.')
+          fetchDashboardData()
           break
           
         case 'orchestrate':
-          const orchestrateRes = await fetch(`${AGENT2_API}/orchestrate/one-click`, {
+          const resultOrch = await apiFetch(`/orchestrate/one-click`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               limit: 25,
               offer: 'AI-Powered Business Solutions',
@@ -249,15 +220,9 @@ export default function Page() {
               role: 'CEO',
               industry: 'Technology'
             })
-          })
-          if (orchestrateRes.ok) {
-            const result = await orchestrateRes.json()
-            alert(`Full orchestration completed! Created ${result.leads?.length || 0} leads and ${result.recipients?.length || 0} campaign recipients.`)
-            fetchDashboardData()
-          } else {
-            const error = await orchestrateRes.text()
-            alert(`Failed to start orchestration: ${error}`)
-          }
+          }, 2)
+          alert(`Full orchestration completed! Created ${resultOrch.leads?.length || 0} leads and ${resultOrch.recipients?.length || 0} campaign recipients.`)
+          fetchDashboardData()
           break
       }
     } catch (error) {

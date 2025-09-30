@@ -13,8 +13,9 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/outline'
 import { formatDate } from '../../utils/date'
+import { apiFetch } from '../../utils/api'
 
-const API = (process.env.NEXT_PUBLIC_AGENT2_API_URL as string) || 'http://localhost:8001/api/v1'
+const API = ''
 
 interface CampaignEmail {
   id: number
@@ -48,6 +49,13 @@ export default function CampaignsPage() {
     content: '',
     status: 'draft'
   })
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
+  const [recipients, setRecipients] = useState<any[]>([])
+  const [recipientsLoading, setRecipientsLoading] = useState(false)
+  const [selectedRecipient, setSelectedRecipient] = useState<any | null>(null)
+  const [recipientEvents, setRecipientEvents] = useState<any[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [previewEmail, setPreviewEmail] = useState<CampaignEmail | null>(null)
 
   useEffect(() => {
     fetchCampaigns()
@@ -56,9 +64,7 @@ export default function CampaignsPage() {
   const fetchCampaigns = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${API}/campaigns/`)
-      if (!res.ok) throw new Error('Failed to load campaigns')
-      const data = await res.json()
+      const data = await apiFetch('/campaigns/', {}, 2)
       setCampaigns(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -67,18 +73,49 @@ export default function CampaignsPage() {
     }
   }
 
+  const openRecipientTimeline = async (campaign: Campaign) => {
+    setSelectedCampaign(campaign)
+    setSelectedRecipient(null)
+    setRecipientEvents([])
+    try {
+      setRecipientsLoading(true)
+      const recs = await apiFetch(`/campaigns/${campaign.id}/recipients`, {}, 2)
+      setRecipients(recs)
+    } catch (e) {
+      setRecipients([])
+    } finally {
+      setRecipientsLoading(false)
+    }
+  }
+
+  const loadRecipientEvents = async (recipient: any) => {
+    setSelectedRecipient(recipient)
+    try {
+      setEventsLoading(true)
+      const evs = await apiFetch(`/campaigns/${selectedCampaign?.id}/recipients/${recipient.id}/events`, {}, 2)
+      setRecipientEvents(evs)
+    } catch (e) {
+      setRecipientEvents([])
+    } finally {
+      setEventsLoading(false)
+    }
+  }
+
   const createCampaign = async () => {
     try {
       setLoading(true)
-      const res = await fetch(`${API}/campaigns/`, {
+      const res = await apiFetch('/campaigns/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newCampaign),
-      })
-      
-      if (res.ok) {
+        body: JSON.stringify({
+          name: newCampaign.name,
+          offer: newCampaign.content,
+          status: newCampaign.status,
+          emails: [
+            { subject_template: newCampaign.subject, body_template: newCampaign.content, send_delay_hours: 0, is_follow_up: false }
+          ]
+        })
+      }, 2)
+      if (res) {
         setNewCampaign({ name: '', subject: '', content: '', status: 'draft' })
         setShowCreateForm(false)
         fetchCampaigns()
@@ -97,15 +134,13 @@ export default function CampaignsPage() {
   const startCampaign = async (campaignId: number) => {
     try {
       setLoading(true)
-      const res = await fetch(`${API}/campaigns/${campaignId}/enroll`, {
+      const res = await apiFetch(`/campaigns/${campaignId}/recipients`, { method: 'GET' }, 2)
+      const leadIds = (res || []).map((r: any) => r.lead_id)
+      await apiFetch(`/campaigns/${campaignId}/enroll`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ recipient_ids: [] }), // Empty array for now
-      })
-      
-      if (res.ok) {
+        body: JSON.stringify({ lead_ids: leadIds, send_now: true })
+      }, 2)
+      if (true) {
         fetchCampaigns()
         alert('Campaign started successfully!')
       } else {
@@ -347,11 +382,11 @@ export default function CampaignsPage() {
                 </div>
 
                 <div className="mt-4 flex space-x-2">
-                  <button className="flex-1 btn-primary text-sm">
-                    Edit
+                  <button className="flex-1 btn-secondary text-sm" onClick={() => openRecipientTimeline(campaign)}>
+                    Recipients
                   </button>
-                  <button className="flex-1 btn-secondary text-sm">
-                    View
+                  <button className="flex-1 btn-primary text-sm" onClick={() => setPreviewEmail(campaign.emails[0] || null)}>
+                    Preview
                   </button>
                 </div>
               </div>
@@ -449,6 +484,78 @@ export default function CampaignsPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recipient Timeline Drawer */}
+        {selectedCampaign && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-30 z-40" onClick={() => setSelectedCampaign(null)}>
+            <div className="absolute right-0 top-0 h-full w-full max-w-xl bg-white shadow-xl p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Recipients • {selectedCampaign.name}</h3>
+                <button onClick={() => setSelectedCampaign(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              {recipientsLoading ? (
+                <p className="text-sm text-gray-500">Loading recipients...</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="border rounded p-3 max-h-[70vh] overflow-y-auto">
+                    <h4 className="text-sm font-medium mb-2">Recipients</h4>
+                    <div className="space-y-2">
+                      {recipients.map((r) => (
+                        <button key={r.id} className={`w-full text-left p-2 rounded ${selectedRecipient?.id === r.id ? 'bg-gray-100' : 'hover:bg-gray-50'}`} onClick={() => loadRecipientEvents(r)}>
+                          <div className="text-sm text-gray-900">{r.email}</div>
+                          <div className="text-xs text-gray-500">Step {r.current_step} {r.paused ? '• paused' : ''}</div>
+                        </button>
+                      ))}
+                      {recipients.length === 0 && <p className="text-sm text-gray-500">No recipients.</p>}
+                    </div>
+                  </div>
+                  <div className="border rounded p-3 max-h-[70vh] overflow-y-auto">
+                    <h4 className="text-sm font-medium mb-2">Timeline</h4>
+                    {eventsLoading && <p className="text-sm text-gray-500">Loading timeline...</p>}
+                    {!eventsLoading && selectedRecipient && (
+                      <div className="space-y-2">
+                        {recipientEvents.map((e) => (
+                          <div key={e.id} className="bg-gray-50 p-2 rounded">
+                            <div className="text-sm text-gray-900 capitalize">{e.event_type}</div>
+                            <div className="text-xs text-gray-500">{new Date(e.created_at).toLocaleString()}</div>
+                          </div>
+                        ))}
+                        {recipientEvents.length === 0 && <p className="text-sm text-gray-500">No events.</p>}
+                      </div>
+                    )}
+                    {!eventsLoading && !selectedRecipient && <p className="text-sm text-gray-500">Select a recipient to view timeline.</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Template Preview Modal */}
+        {previewEmail && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Email Preview</h3>
+                <button onClick={() => setPreviewEmail(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Subject</label>
+                  <p className="text-sm text-gray-900">{previewEmail.subject_template || '(no subject)'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Body</label>
+                  <pre className="text-sm text-gray-900 whitespace-pre-wrap bg-gray-50 p-3 rounded">{previewEmail.body_template || '(no body)'}</pre>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => setPreviewEmail(null)} className="btn-secondary">Close</button>
+                <button disabled className="btn-primary opacity-60 cursor-not-allowed" title="Test send not implemented yet">Test Send</button>
               </div>
             </div>
           </div>

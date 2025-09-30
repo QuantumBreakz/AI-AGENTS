@@ -7,6 +7,8 @@ from app.services.scrapers.providers.proxycurl import ProxycurlLinkedInScraper
 from app.services.scrapers.providers.serpapi_clutch import SerpapiClutchScraper
 from app.services.scrapers.providers.web_generic import WebGenericScraper
 from app.core.config import settings
+from app.core.db import AsyncSessionLocal
+from app.models.scraping import SearchRun, LeadSource
 
 logger = logging.getLogger(__name__)
 
@@ -101,8 +103,10 @@ def generate_mock_leads(query: Mapping[str, Any], count: int = 5) -> List[Dict[s
 	
 	return results
 
-async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None = None) -> List[Dict[str, Any]]:
-	"""Aggregate search results from multiple lead scraping providers"""
+async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None = None) -> tuple[List[Dict[str, Any]], int | None]:
+    """Aggregate search results from multiple lead scraping providers.
+    Returns (results, search_run_id).
+    """
 	
 	logger.info(f"🔍 Starting lead search with query: {query}")
 	
@@ -144,18 +148,24 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 	
 	logger.info(f"✅ Final selected scrapers: {selected}")
 	
-	# If no providers selected, use mock data only if not requiring real data
-	if not selected:
+    # If no providers selected, use mock data only if not requiring real data
+    if not selected:
 		if settings.REQUIRE_REAL_DATA:
 			logger.warning("⚠️ No scrapers available and real data required; falling back to 'web' provider")
 			selected = ["web"]
 		logger.warning("⚠️ No scrapers available, using mock data")
-		return generate_mock_leads(query, count=25)
+        return generate_mock_leads(query, count=25), None
 	
-	results: List[Dict[str, Any]] = []
+    results: List[Dict[str, Any]] = []
 	seen: Set[str] = set()
 	errors = []
 	successful_scrapers = []
+
+    # Begin provenance run
+    async with AsyncSessionLocal() as db:
+        run = SearchRun(query=dict(query), providers_requested={"requested": providers}, providers_used=None, status="completed")
+        db.add(run)
+        await db.flush()
 	
 	for name in selected:
 		scraper = provider_map.get(name)
@@ -181,15 +191,20 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 				result_count += 1
 			
 			logger.info(f"✅ Scraper {name} returned {result_count} results")
-			results.extend(scraper_results)
+            results.extend(scraper_results)
 			successful_scrapers.append(name)
+            # Persist sources
+            if scraper_results:
+                for n in scraper_results:
+                    await db.flush()
+                    db.add(LeadSource(search_run_id=run.id, provider=name, lead_id=None, data=n))
 			
 		except Exception as e:
 			error_msg = f"❌ Scraper {name} failed: {str(e)}"
 			logger.error(error_msg, exc_info=True)
 			errors.append(error_msg)
 	
-	# If no results from any scraper, try web provider when real data required; else optionally fall back to mock
+    # If no results from any scraper, try web provider when real data required; else optionally fall back to mock
 	if not results:
 		if settings.REQUIRE_REAL_DATA:
 			logger.warning("⚠️ No results from API scrapers; attempting 'web' provider for real data")
@@ -209,16 +224,27 @@ async def aggregate_search(query: Mapping[str, Any], providers: List[str] | None
 			except Exception:
 				logger.debug("web_provider_fallback_failed", exc_info=True)
 			
-			# If web provider also fails, generate mock data but mark it as such
-			if not results:
-				logger.warning("⚠️ Web provider also failed, generating enhanced mock data")
-				results = generate_mock_leads(query, count=15)
+            # If web provider also fails and real data is required, return empty (no mock)
+            if not results:
+                logger.warning("⚠️ Web provider also failed and REQUIRE_REAL_DATA=True; returning empty results")
+                # finalize run and return empty
+                run.providers_used = {"used": selected + (["web"] if "web" not in selected else [])}
+                run.status = "failed"
+                run.errors = {"errors": errors + ["no_results_real_data"]}
+                await db.commit()
+                return [], run.id
 		else:
 			logger.warning("⚠️ No results from any scraper, using mock data as fallback")
 			results = generate_mock_leads(query, count=15)
 	
-	logger.info(f"🎉 Search complete - Total results: {len(results)}, Successful scrapers: {successful_scrapers}")
+    # Finalize run
+    run.providers_used = {"used": selected}
+    run.status = "completed" if results else ("partial" if errors else "failed")
+    run.errors = {"errors": errors} if errors else None
+    await db.commit()
+
+    logger.info(f"🎉 Search complete - Total results: {len(results)}, Successful scrapers: {successful_scrapers}")
 	if errors:
 		logger.warning(f"⚠️ Scraper errors: {errors}")
 	
-	return results
+    return results, run.id

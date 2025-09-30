@@ -9,20 +9,42 @@ def find_env_file() -> str | None:
 	"""Find the first existing .env file in multiple locations"""
 	# Get the directory where this config.py file is located
 	current_dir = os.path.dirname(__file__)
+	# Allow override via ENV_FILE
+	env_override = os.getenv("ENV_FILE")
+	if env_override and os.path.exists(env_override):
+		logger.info(f"📁 Using ENV_FILE override: {env_override}")
+		return env_override
 	
 	env_files = [
 		# Agent-2/.env (most likely location)
 		os.path.join(current_dir, "..", "..", ".env"),
+		os.path.join(current_dir, "..", "..", ".env.local"),
+		os.path.join(current_dir, "..", "..", ".env.development"),
+		os.path.join(current_dir, "..", "..", ".env.production"),
 		# Current working directory
 		".env",
+		".env.local",
+		".env.development",
+		".env.production",
 		# Parent directory
 		"../.env",
+		"../.env.local",
+		"../.env.development",
+		"../.env.production",
 		# Root directory
 		"../../.env",
+		"../../.env.local",
+		"../../.env.development",
+		"../../.env.production",
 		# Absolute paths for Agent-2
 		"/Users/aliahmed/Downloads/Upwork/Agents/Agent-2/.env",
+		"/Users/aliahmed/Downloads/Upwork/Agents/Agent-2/.env.local",
 		# Absolute path for root
 		"/Users/aliahmed/Downloads/Upwork/Agents/.env",
+		"/Users/aliahmed/Downloads/Upwork/Agents/.env.local",
+		# Also try CWD absolute path
+		os.path.join(os.getcwd(), ".env"),
+		os.path.join(os.getcwd(), ".env.local"),
 	]
 	
 	# Remove duplicates while preserving order
@@ -62,6 +84,11 @@ class Settings(BaseSettings):
 	SES_REGION: str | None = None
 	SENDGRID_API_KEY: str | None = None
 	EMAIL_FROM: str | None = None
+	# Email sending behavior
+	EMAIL_RATE_PER_SEC: int = 5
+	EMAIL_MAX_RETRIES: int = 3
+	EMAIL_RETRY_BACKOFF_SECS: float = 0.5
+	EMAIL_FAILURE_DEFERRAL_MINUTES: int = 15
 	# Additional API keys from environment
 	# CRM and Integrations
 	ZOHO_API_KEY: str | None = None  # legacy; prefer ZOHO_ACCESS_TOKEN
@@ -85,6 +112,10 @@ class Settings(BaseSettings):
 	# App settings
 	PROJECT_NAME: str = "Agent-2"
 	API_PREFIX: str = "/api/v1"
+	# Auth
+	JWT_SECRET: str = "change-me"
+	JWT_ALG: str = "HS256"
+	JWT_EXPIRE_MINUTES: int = 60 * 24
 
 	model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
 		env_file=find_env_file(), 
@@ -131,3 +162,26 @@ if not settings.ZOHO_ACCESS_TOKEN:
 	settings.ZOHO_ACCESS_TOKEN = _env_any("ZOHO_API_KEY", "ZOHO_TOKEN")
 if not settings.HUBSPOT_API_KEY:
 	settings.HUBSPOT_API_KEY = _env_any("HUBSPOT_KEY")
+
+# Validation for required secrets per feature
+def validate_settings() -> None:
+	problems: list[str] = []
+	# Email provider requirements
+	if settings.EMAIL_PROVIDER == "sendgrid":
+		if not settings.SENDGRID_API_KEY or not settings.EMAIL_FROM:
+			problems.append("SENDGRID_API_KEY and EMAIL_FROM required for SendGrid")
+	elif settings.EMAIL_PROVIDER == "gmail":
+		if not settings.GMAIL_SMTP_API_KEY or not settings.EMAIL_FROM:
+			problems.append("GMAIL_SMTP_API_KEY and EMAIL_FROM required for Gmail SMTP")
+	elif settings.EMAIL_PROVIDER == "ses":
+		if not settings.SES_REGION or not settings.EMAIL_FROM:
+			problems.append("SES_REGION and EMAIL_FROM required for SES")
+	# Webhook secret recommended
+	if not settings.EMAIL_WEBHOOK_SECRET:
+		problems.append("EMAIL_WEBHOOK_SECRET is not set (recommended)")
+	if problems:
+		import warnings
+		for p in problems:
+			warnings.warn(f"Config validation: {p}")
+
+validate_settings()
